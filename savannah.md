@@ -87,6 +87,7 @@ local CreditTab = Window:AddTab({Title = "Créditos", Icon = "users"})
 -- HELPER DE SLIDER PRO
 -- ==========================================================
 local isMobile = UserInputService.TouchEnabled
+local debugUIEnabled = false
 
 local function AddSliderPro(tab, id, config)
     local currentValue = config.Default
@@ -1058,18 +1059,6 @@ do
             return btn
         end
 
-        local function isButtonInBottomRight(btn)
-            local cam = workspace.CurrentCamera
-            if not cam then return false end
-            local viewport = cam.ViewportSize
-            local btnPos = btn.AbsolutePosition
-            local btnSize = btn.AbsoluteSize
-            local btnCenterX = btnPos.X + btnSize.X / 2
-            local btnCenterY = btnPos.Y + btnSize.Y / 2
-            
-            return btnCenterX > viewport.X * 0.6 and btnCenterY > viewport.Y * 0.6
-        end
-
         UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if input.UserInputType ~= Enum.UserInputType.Touch then return end
             
@@ -1083,17 +1072,38 @@ do
                         local btnName = string.lower(btn.Name)
                         local parentName = btn.Parent and string.lower(btn.Parent.Name) or ""
                         local fullName = btnName .. " " .. parentName
+
+                        -- DEBUG DE BOTÕES
+                        if debugUIEnabled then
+                            print("[SnowXit Debug] Botão tocado:", fullName, "| Tamanho:", btn.AbsoluteSize.X, "x", btn.AbsoluteSize.Y)
+                        end
                         
-                        local isAttack = string.find(fullName, "attack") or string.find(fullName, "hit") or string.find(fullName, "m1")
-                        local isSpecial = string.find(fullName, "special") or string.find(fullName, "grab") or string.find(fullName, "pounce") or string.find(fullName, "claw")
+                        -- 1. Tenta identificar pelos nomes mais comuns
+                        local isAttack = string.find(fullName, "attack") or string.find(fullName, "hit") or string.find(fullName, "m1") or string.find(fullName, "punch") or string.find(fullName, "bite") or string.find(fullName, "paw")
+                        local isSpecial = string.find(fullName, "special") or string.find(fullName, "grab") or string.find(fullName, "pounce") or string.find(fullName, "claw") or string.find(fullName, "ability") or string.find(fullName, "skill")
                         
+                        -- 2. Se não achar pelo nome, usa posição e tamanho exatos
                         if not isAttack and not isSpecial then
-                            if isButtonInBottomRight(btn) then
-                                local size = btn.AbsoluteSize.X
-                                if size > 80 then
-                                    isAttack = true
-                                elseif size > 40 and size <= 80 then
-                                    isSpecial = true
+                            local cam = workspace.CurrentCamera
+                            if cam then
+                                local viewport = cam.ViewportSize
+                                local btnPos = btn.AbsolutePosition
+                                local btnSize = btn.AbsoluteSize
+                                local btnCenterX = btnPos.X + btnSize.X / 2
+                                local btnCenterY = btnPos.Y + btnSize.Y / 2
+                                
+                                -- Verifica se está no canto inferior direito
+                                if btnCenterX > viewport.X * 0.7 and btnCenterY > viewport.Y * 0.6 then
+                                    -- Botão de Ataque Normal (Pata) é o maior de todos
+                                    if btnSize.X > 100 and btnSize.Y > 100 then
+                                        isAttack = true
+                                    -- Botão Especial (Garra) é médio-grande e fica acima da pata
+                                    elseif btnSize.X > 65 and btnSize.X <= 100 and btnSize.Y > 65 and btnSize.Y <= 100 then
+                                        -- Filtro extra para não pegar Pulo/Corrida (Y muito alto)
+                                        if btnCenterY > viewport.Y * 0.65 and btnCenterY < viewport.Y * 0.85 then
+                                            isSpecial = true
+                                        end
+                                    end
                                 end
                             end
                         end
@@ -1468,6 +1478,15 @@ end
 
 -- MISC
 do
+    MiscTab:AddSection("Configurações")
+    
+    MiscTab:AddToggle("DebugUI", {
+        Title = "Debug Botões Mobile",
+        Description = "Ative para ver o nome dos botões no console (F9) caso o Hitbox ative no botão errado",
+        Default = false,
+        Callback = function(val) debugUIEnabled = val end
+    })
+
     MiscTab:AddSection("Tema do Painel")
     local themes = {"Dark", "Darker", "Light", "Aqua", "Amethyst", "Rose"}
     MiscTab:AddDropdown("ThemeSelect", {

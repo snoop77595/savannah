@@ -85,8 +85,6 @@ local CreditTab = Window:AddTab({Title = "Créditos", Icon = "users"})
 
 -- ==========================================================
 -- HELPER DE SLIDER PRO
--- 1) Aplica o valor Default imediatamente (sem precisar arrastar)
--- 2) Em mobile, adiciona botões ➖/➕ para ajuste fino
 -- ==========================================================
 local isMobile = UserInputService.TouchEnabled
 
@@ -107,12 +105,10 @@ local function AddSliderPro(tab, id, config)
         end
     })
 
-    -- Aplica valor padrão na inicialização (correção principal)
     if config.Callback and config.Default ~= nil then
         pcall(config.Callback, config.Default)
     end
 
-    -- Botões +/- para mobile
     if isMobile then
         tab:AddButton({
             Title = "➖ " .. config.Title .. " (-" .. step .. ")",
@@ -471,9 +467,11 @@ do
 
     AddSliderPro(PlayerTab, "Slider_AntiGrab_Delay", {
         Title = "Velocidade do Anti Grab",
-        Description = "Menor valor = Mais rápido",
-        Default = 0.1, Min = 0.1, Max = 1, Rounding = 1, Step = 0.1,
-        Callback = function(val) antiGrabConfig.delay = val end
+        Description = "1 a 10 (10 = Mais rápido)",
+        Default = 10, Min = 1, Max = 10, Rounding = 0, Step = 1,
+        Callback = function(val) 
+            antiGrabConfig.delay = 1 / val 
+        end
     })
 end
 
@@ -533,125 +531,6 @@ do
         Title = "Infinite Stamina", Default = false,
         Callback = function(value) ToggleInfiniteStats("Stamina", value) end
     })
-
-    StatusTab:AddSection("Auto Beber")
-
-    local autoDrinkEnabled = false
-    local autoDrinkThread = nil
-    local posOriginal = nil
-    local thirstThreshold = 50
-    local isDrinking = false
-    local lastCheckTime = 0
-    local CHECK_INTERVAL = 3
-    local drinkStartTime = 0
-    local DRINK_TIMEOUT = 15
-    local DRINKING_DEPTH = 10
-
-    local function startDrinking()
-        local success = pcall(function()
-            return ReplicatedStorage:FindFirstChild("AskServerToSetSubStateRemoteFunction"):InvokeServer("Drinking")
-        end)
-        if success then isDrinking = true; drinkStartTime = tick() end
-        return success
-    end
-
-    local function stopDrinking()
-        pcall(function()
-            ReplicatedStorage:FindFirstChild("AskServerToSetSubStateRemoteFunction"):InvokeServer("Idle")
-        end)
-        isDrinking = false
-    end
-
-    local function resetPosition()
-        local character = LocalPlayer.Character
-        if character and character:FindFirstChild("HumanoidRootPart") then
-            local rootPart = character.HumanoidRootPart
-            rootPart.Anchored = false
-            task.wait(0.1)
-            if posOriginal then
-                rootPart.CFrame = posOriginal + Vector3.new(0, 3, 0)
-                posOriginal = nil
-            end
-        end
-    end
-
-    local function autoDrinkLoop()
-        while autoDrinkEnabled do
-            local currentTime = tick()
-            if currentTime - lastCheckTime >= CHECK_INTERVAL then
-                lastCheckTime = currentTime
-                local character = LocalPlayer.Character
-                if character and character:FindFirstChild("HumanoidRootPart") and not isDrinking then
-                    local rootPart = character.HumanoidRootPart
-                    local waterAttr = character:GetAttribute("Water") or 100
-                    if waterAttr < thirstThreshold then
-                        posOriginal = rootPart.CFrame
-                        rootPart.Velocity = Vector3.new(0, 0, 0)
-                        rootPart.CFrame = rootPart.CFrame - Vector3.new(0, DRINKING_DEPTH, 0)
-                        task.wait(0.2)
-                        rootPart.Anchored = true
-                        local started = startDrinking()
-                        if started then
-                            Fluent:Notify({Title="Auto Beber", Content="Começou a beber! Aguardando encher...", Duration=2})
-                            local drinkTimeout = false
-                            while autoDrinkEnabled and isDrinking and not drinkTimeout do
-                                task.wait(1)
-                                if tick() - drinkStartTime > DRINK_TIMEOUT then
-                                    drinkTimeout = true; break
-                                end
-                                local currentWater = character:GetAttribute("Water") or 100
-                                if currentWater >= 100 then break end
-                            end
-                            stopDrinking()
-                            resetPosition()
-                            Fluent:Notify({Title="Auto Beber", Content=drinkTimeout and "Timeout! Parando de beber..." or "Terminou de beber! Água em 100%", Duration=2})
-                        else
-                            Fluent:Notify({Title="Auto Beber", Content="Falha ao iniciar bebida!", Duration=2})
-                            resetPosition()
-                        end
-                    end
-                end
-            end
-            task.wait(isDrinking and 0.5 or 1)
-        end
-    end
-
-    AddSliderPro(StatusTab, "ThirstThreshold", {
-        Title = "Beber quando água estiver abaixo de",
-        Description = "Configura a % de água para começar a beber",
-        Default = 50, Min = 10, Max = 90, Rounding = 1,
-        Callback = function(value) thirstThreshold = value end
-    })
-
-    StatusTab:AddToggle("AutoDrink", {
-        Title = "Auto Beber (Automático)",
-        Description = "Bebe água automaticamente quando estiver com sede",
-        Default = false,
-        Callback = function(value)
-            autoDrinkEnabled = value
-            if value then
-                posOriginal = nil
-                isDrinking = false
-                lastCheckTime = 0
-                autoDrinkThread = task.spawn(autoDrinkLoop)
-                Fluent:Notify({Title="Auto Beber", Content="Auto beber ativado! Beberá quando água < "..thirstThreshold.."%", Duration=3})
-            else
-                if autoDrinkThread then task.cancel(autoDrinkThread); autoDrinkThread = nil end
-                stopDrinking()
-                local character = LocalPlayer.Character
-                if character and character:FindFirstChild("HumanoidRootPart") then
-                    character.HumanoidRootPart.Anchored = false
-                    if posOriginal then
-                        task.wait(0.1)
-                        character.HumanoidRootPart.CFrame = posOriginal + Vector3.new(0, 3, 0)
-                    end
-                end
-                posOriginal = nil
-                isDrinking = false
-                Fluent:Notify({Title="Auto Beber", Content="Auto beber desativado!", Duration=3})
-            end
-        end
-    })
 end
 
 -- Ataque
@@ -677,7 +556,6 @@ do
     local crowdHistory = {}
     local maxCrowdHistory = 10
 
-    -- Whitelist por UserId (robusto)
     local whitelistedUserIds = {}
 
     local function isModelWhitelisted(model)
@@ -1189,7 +1067,6 @@ do
             local btnCenterX = btnPos.X + btnSize.X / 2
             local btnCenterY = btnPos.Y + btnSize.Y / 2
             
-            -- Verifica se está no canto inferior direito
             return btnCenterX > viewport.X * 0.6 and btnCenterY > viewport.Y * 0.6
         end
 
@@ -1207,23 +1084,20 @@ do
                         local parentName = btn.Parent and string.lower(btn.Parent.Name) or ""
                         local fullName = btnName .. " " .. parentName
                         
-                        -- Tenta achar pelos nomes
                         local isAttack = string.find(fullName, "attack") or string.find(fullName, "hit") or string.find(fullName, "m1")
                         local isSpecial = string.find(fullName, "special") or string.find(fullName, "grab") or string.find(fullName, "pounce") or string.find(fullName, "claw")
                         
-                        -- Fallback: Se não achar o nome, usa tamanho e posição da tela
                         if not isAttack and not isSpecial then
                             if isButtonInBottomRight(btn) then
                                 local size = btn.AbsoluteSize.X
                                 if size > 80 then
-                                    isAttack = true -- Botão azul (grande)
+                                    isAttack = true
                                 elseif size > 40 and size <= 80 then
-                                    isSpecial = true -- Botão vermelho (menor, acima do azul)
+                                    isSpecial = true
                                 end
                             end
                         end
                         
-                        -- Dispara as funções
                         if hitboxEnabled and isAttack then
                             fireHitboxAttack()
                             return
